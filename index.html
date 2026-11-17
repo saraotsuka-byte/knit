@@ -62,6 +62,12 @@ button.p:hover{background:#a8456a}
 #ovalOpt{display:none;margin-bottom:12px;padding:10px;border:1px solid var(--line);border-radius:10px;background:#fffdfb;font-size:14px}
 #ovalOpt label{display:flex;gap:6px;align-items:center;margin-top:8px}
 #ovalOpt input{width:70px}
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:12px;z-index:10}
+.ovbox{background:#fff;border-radius:12px;padding:12px;max-width:100%;max-height:100%;overflow:auto}
+.ovbox p{margin:0 0 8px;font-size:13px}
+.ovbox img{max-width:100%;height:auto;display:block;border:1px solid var(--line);-webkit-touch-callout:default}
+.ovbox .tools{margin-top:8px}
+.ovbox a.b{text-decoration:none;font:inherit;border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:6px;padding:7px 12px}
 .hint{color:var(--sub);font-size:12px;margin:4px 0 0}
 </style>
 </head>
@@ -426,14 +432,32 @@ document.getElementById('addRow').onclick=()=>{
   renderForm();
 };
 document.getElementById('reset').onclick=()=>{ if(confirm('すべての編み図を初期状態に戻しますか?')){st=defaults();renderForm();} };
+function showPreview(url){
+  const ov=document.createElement('div'); ov.className='ov';
+  ov.innerHTML=`<div class="ovbox"><p>画像を<b>長押し</b>して「写真に追加」(iPhone)や「画像をダウンロード」(Android)で保存できます。</p><img src="${url}" alt="編み図"><div class="tools"><a class="b p" href="${url}" download="amizu.png">ダウンロード</a><button class="b">閉じる</button></div></div>`;
+  ov.querySelector('button').onclick=()=>ov.remove();
+  document.body.appendChild(ov);
+}
 document.getElementById('png').onclick=()=>{
   const svg=document.querySelector('#chartWrap svg'); if(!svg) return;
-  const w=+svg.getAttribute('width'), h=+svg.getAttribute('height'), k=2;
+  const w=+svg.getAttribute('width'), h=+svg.getAttribute('height');
+  const k=Math.min(2,Math.sqrt(12e6/(w*h)));   // スマホのcanvas上限対策
   const img=new Image();
+  img.onerror=()=>alert('画像の作成に失敗しました');
   img.onload=()=>{
-    const cv=document.createElement('canvas'); cv.width=w*k; cv.height=h*k;
+    const cv=document.createElement('canvas'); cv.width=Math.round(w*k); cv.height=Math.round(h*k);
     const g=cv.getContext('2d'); g.fillStyle='#fff'; g.fillRect(0,0,cv.width,cv.height); g.drawImage(img,0,0,cv.width,cv.height);
-    const a=document.createElement('a'); a.download='amizu.png'; a.href=cv.toDataURL('image/png'); a.click();
+    cv.toBlob(async blob=>{
+      if(!blob){alert('画像の作成に失敗しました');return;}
+      const file=new File([blob],'amizu.png',{type:'image/png'});
+      const touch=matchMedia('(pointer:coarse)').matches;
+      if(touch&&navigator.canShare&&navigator.canShare({files:[file]})){
+        try{await navigator.share({files:[file],title:'編み図'});return;}catch(e){if(e.name==='AbortError')return;}
+      }
+      const url=URL.createObjectURL(blob);
+      if(touch){showPreview(url);return;}
+      const a=document.createElement('a'); a.download='amizu.png'; a.href=url; document.body.appendChild(a); a.click(); a.remove();
+    },'image/png');
   };
   img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(new XMLSerializer().serializeToString(svg));
 };
