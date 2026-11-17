@@ -4,6 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>編み図メーカー</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="theme-color" content="#c4577a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="編み図">
 <style>
 :root{--bg:#faf6f1;--card:#fff;--ink:#2b2622;--sub:#7a6f66;--line:#e5dcd2;--accent:#c4577a;--accent2:#f6e3ea}
 *{box-sizing:border-box}
@@ -229,6 +234,7 @@ document.getElementById('png').onclick=()=>{
   img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(new XMLSerializer().serializeToString(svg));
 };
 renderForm();
+if('serviceWorker' in navigator&&location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script>
 </body>
 </html>
