@@ -55,6 +55,8 @@ button.p:hover{background:#a8456a}
 .gh{display:flex;gap:6px;align-items:center;margin-bottom:6px;font-size:14px}
 .gh input{width:64px}
 .gh button:last-child{margin-left:0}
+.atbox{display:block;margin:-2px 0 8px 4px;font-size:13px;color:var(--sub)}
+.atbox input{width:70px;margin:0 4px}
 .x:disabled{opacity:.3;cursor:default}
 .gi{margin-bottom:6px}
 #ovalOpt{display:none;margin-bottom:12px;padding:10px;border:1px solid var(--line);border-radius:10px;background:#fffdfb;font-size:14px}
@@ -138,6 +140,16 @@ const STITCHES = {
 const byId = (mode,id)=>STITCHES[mode].find(s=>s.id===id) || STITCHES[mode][0];
 const sym = (s,tf)=>`<g transform="${tf}" stroke="${S}" stroke-width="${SW}" stroke-linecap="round" stroke-linejoin="round" fill="none">${s.svg}</g>`;
 
+const WID={inc:28,dec:28,bobble:22,popcorn:22,tr:18,dc:18,hdc:18,backsc:18,sc:16,chain:12,turn:12};
+const wOf=s=>WID[s.id]||18;
+// 引き抜き編み(位置指定): 同じ段のj目めの記号の上に点を重ねる
+const isOv=it=>it.rep===undefined&&it.t==='slip'&&it.at>0;
+function overlay(slips,tfs){
+  let o=''; const sl=STITCHES.crochet.find(x=>x.id==='slip');
+  (slips||[]).forEach(j=>{const tf=tfs[Math.min(j,tfs.length-1)]; if(!tf) return;
+    o+=`<g transform="${tf} translate(0,-15)"><circle r="6" fill="#fff"/></g>`+sym(sl,tf+' translate(0,-15)');});
+  return o;
+}
 // ---------- 状態 ----------
 const KEY='knit-app-v1';
 const COLORS=[['','なし'],['#d4f0a8','緑'],['#fff27a','黄'],['#ffd1dc','ピンク'],['#cde7ff','水色'],['#e6d9ff','紫'],['#ffe0b3','橙'],['#e8e8e8','グレー']];
@@ -160,7 +172,9 @@ function moveBtns(list,ii,box){
   u.onclick=()=>mv(-1); d.onclick=()=>mv(1);
   box.append(u,d);
 }
-function buildItems(list,cont){
+let rowItems=null;
+function buildItems(list,cont,top){
+  if(top) rowItems=list;
   const opts=STITCHES[st.mode].map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
   list.forEach((it,ii)=>{
     if(it.rep!==undefined){
@@ -170,17 +184,23 @@ function buildItems(list,cont){
       const gdel=g.querySelector('.gh button'); gdel.onclick=()=>{list.splice(ii,1);renderForm();};
       const mb=document.createElement('span'); mb.style.cssText='margin-left:auto;display:flex;gap:6px'; moveBtns(list,ii,mb); gdel.before(mb); gdel.style.marginLeft='0';
       g.querySelector(':scope > button').onclick=()=>{it.items.push({t:first(),n:1});renderForm();};
-      buildItems(it.items,g.querySelector('.gi'));
+      buildItems(it.items,g.querySelector('.gi'),false);
       cont.appendChild(g); return;
     }
     const e=document.createElement('div'); e.className='entry';
     e.innerHTML=`<select>${opts}</select><input type="number" min="1" max="200" value="${it.n}"><span>目</span><button class="b x" title="削除">✕</button>`;
     const sel=e.querySelector('select'); sel.value=byId(st.mode,it.t).id;
-    sel.onchange=()=>{it.t=sel.value;update();};
+    sel.onchange=()=>{it.t=sel.value; if(it.t!=='slip') delete it.at; renderForm();};
+    if(it.t==='slip'&&list===rowItems){
+      const at=document.createElement('span'); at.className='atbox';
+      at.innerHTML=`同じ段の<input type="number" min="1" placeholder="並べる" value="${it.at||''}">目めの上`;
+      at.querySelector('input').oninput=ev=>{const v=parseInt(ev.target.value); if(v>0) it.at=v; else delete it.at; update();};
+      e._at=at;
+    }
     e.querySelector('input').oninput=ev=>{it.n=Math.max(1,Math.min(200,parseInt(ev.target.value)||1));update();};
     const del=e.querySelector('button'); del.onclick=()=>{list.splice(ii,1);renderForm();};
     const mb=document.createDocumentFragment(); moveBtns(list,ii,mb); del.before(mb);
-    cont.appendChild(e);
+    cont.appendChild(e); if(e._at) cont.appendChild(e._at);
   });
 }
 function renderForm(){
@@ -201,7 +221,7 @@ function renderForm(){
       <button class="b x" data-a="dup" title="複製">⧉</button><button class="b x" data-a="del" title="削除">✕</button></h3>
       <div class="items"></div><button class="b" data-a="add">＋ 編み目を追加</button> <button class="b" data-a="addrep">＋ 繰り返しを追加</button>
       <div class="rowopt"><span>この段を <input type="number" class="times" min="1" max="200"> 段くりかえす</span><span>背景色 <select class="color">${copts}</select></span></div>`;
-    buildItems(r.items,d.querySelector('.items'));
+    buildItems(r.items,d.querySelector('.items'),true);
     const ti=d.querySelector('.times'); ti.value=r.times||1;
     ti.oninput=ev=>{r.times=Math.max(1,Math.min(200,parseInt(ev.target.value)||1));update();};
     const co=d.querySelector('.color'); co.value=r.color||'';
@@ -224,13 +244,14 @@ function renderForm(){
 
 // ---------- 展開 ----------
 const expandList=l=>l.flatMap(it=>it.rep!==undefined?Array.from({length:it.rep},()=>expandList(it.items)).flat():Array.from({length:it.n},()=>byId(st.mode,it.t)));
-const expand=r=>expandList(r.items);
+const expand=r=>expandList(r.items.filter(it=>!isOv(it)));
+const slipsOf=r=>r.items.filter(isOv).flatMap(it=>Array.from({length:it.n},(_,k)=>it.at-1+k));
 // 「この段を○段くりかえす」を展開した、描画用の段リスト
 function chartRows(){
   const out=[];
   rows().forEach((r,si)=>{
     const stt=expand(r); if(!stt.length) return;
-    for(let k=0;k<Math.max(1,r.times||1);k++) out.push({st:stt,color:r.color||'',src:si});
+    for(let k=0;k<Math.max(1,r.times||1);k++) out.push({st:stt,color:r.color||'',src:si,slips:slipsOf(r)});
   });
   return out;
 }
@@ -238,8 +259,8 @@ const wrap=(p,cls='')=>`<svg xmlns="http://www.w3.org/2000/svg" class="${cls}" w
 function chartSVG(){
   const C=chartRows();
   if(!C.length) return '<p style="color:#7a6f66;padding:30px">段を追加してください</p>';
-  if(st.layout==='round') return roundSVG(C.map(c=>c.st));
-  if(st.layout==='oval') return wrap(ovalParts(C.map(c=>c.st)));
+  if(st.layout==='round') return roundSVG(C);
+  if(st.layout==='oval') return wrap(ovalParts(C));
   if(st.layout==='bag') return bagSVG(C);
   return wrap(flatParts(C,{}));
 }
@@ -253,10 +274,13 @@ function flatParts(C,opt){
     const y=h-15-(i+0.5)*H, n=c.st.length, rtl=opt.allRtl||i%2===0, cx=w/2, num=(opt.num0||0)+i+1;
     if(c.color) o+=`<rect x="${M-6}" y="${y-H/2}" width="${bw+12}" height="${H}" fill="${c.color}"/>`;
     o+=`<line x1="${M-6}" x2="${w-M+6}" y1="${y+H/2}" y2="${y+H/2}" stroke="#e8e8e8"/>`;
+    const tfs=[];
     c.st.forEach((s,j)=>{
       const pos=rtl?(n-1)/2-j:j-(n-1)/2;
-      o+=sym(s,`translate(${cx+pos*W},${y}) scale(${k.toFixed(2)})`);
+      tfs[j]=`translate(${cx+pos*W},${y}) scale(${k.toFixed(2)})`;
+      o+=sym(s,tfs[j]);
     });
+    o+=overlay(c.slips,tfs);
     const show=!opt.sparse||num===1||num%5===0||i===C.length-1;
     if(show){
       const lx=rtl?w-M+12:M-12;
@@ -268,20 +292,23 @@ function flatParts(C,opt){
 }
 
 // ---------- 円形 ----------
-function roundSVG(R){
-  const ringH=42, sw=30; let prev=10; const rings=[];
+function roundSVG(C){
+  const R=C.map(c=>c.st), ringH=44; let prev=10; const rings=[];
   R.forEach(r=>{
-    const n=r.length, rm=Math.max(prev+ringH/2, n*sw/(2*Math.PI));
-    rings.push({rm,n,sc:Math.min(1,(2*Math.PI*rm/n)/32)}); prev=rm+ringH/2;
+    const n=r.length, sw=Math.max(24,Math.max(...r.map(wOf))+6), rm=Math.max(prev+ringH/2, n*sw/(2*Math.PI));
+    rings.push({rm,n}); prev=rm+ringH/2;
   });
   const Rmax=prev+10, size=Math.ceil(Rmax*2+70), c=size/2; let o='';
   rings.forEach((g,i)=>{
     o+=`<circle cx="${c}" cy="${c}" r="${g.rm+ringH/2}" fill="none" stroke="#eee"/>`;
+    const tfs=[];
     R[i].forEach((s,k)=>{
       const th=-Math.PI/2-2*Math.PI*(k+0.5)/g.n;
       const x=c+g.rm*Math.cos(th), y=c+g.rm*Math.sin(th), deg=th*180/Math.PI+90;
-      o+=sym(s,`translate(${x.toFixed(1)},${y.toFixed(1)}) rotate(${deg.toFixed(1)}) scale(${g.sc.toFixed(2)})`);
+      tfs[k]=`translate(${x.toFixed(1)},${y.toFixed(1)}) rotate(${deg.toFixed(1)})`;
+      o+=sym(s,tfs[k]);
     });
+    o+=overlay(C[i].slips,tfs);
   });
   rings.forEach((g,i)=>{
     o+=`<text x="${c+g.rm+ringH/2-2}" y="${c-4}" font-size="12" fill="#c4577a" text-anchor="end" stroke="#fff" stroke-width="3" paint-order="stroke">${i+1}</text>`;
@@ -290,27 +317,33 @@ function roundSVG(R){
 }
 
 // ---------- 楕円(袋の底) ----------
-function ovalParts(R){
-  const sw=30, ringH=40, L1=R[0].length;
+function ovalParts(C){
+  const R=C.map(c=>c.st), sw=34, ringH=42, L1=R[0].length;
   const P=Math.max(1,st.ovalP||Math.max(1,L1-2)), a=P*sw, rings=R.slice(1);
-  const b0=28, Bmax=(rings.length?b0+(rings.length-1)*ringH:0)+ringH/2;
+  const geo=[]; let bp=0;
+  rings.forEach((r,i)=>{
+    const N=r.length, Pn=Math.min(P,Math.max(0,Math.floor((N-2)/2))), rest=N-2*Pn, e1=Math.ceil(rest/2), e2=rest-e1;
+    const wm=Math.max(24,Math.max(...r.map(wOf))+6);
+    const b=Math.max(i?bp+ringH:30, Math.max(e1,e2)*wm/Math.PI);
+    geo.push({Pn,e1,e2,b}); bp=b;
+  });
+  const Bmax=(geo.length?geo[geo.length-1].b:0)+ringH/2;
   const w=Math.ceil(Math.max(a+2*Bmax,L1*sw)+90), h=Math.ceil(2*Bmax+90), cx=w/2, cy=h/2; let o='';
   R[0].forEach((s,k)=>{o+=sym(s,`translate(${cx-(L1-1)*sw/2+k*sw},${cy}) rotate(90)`);});
   o+=`<text x="${cx-L1*sw/2-6}" y="${cy+4}" font-size="12" fill="#c4577a" text-anchor="end">1</text>`;
   const f=n=>n.toFixed(1);
   rings.forEach((r,i)=>{
-    const b=b0+i*ringH, B=b+ringH/2, N=r.length;
-    const Pn=Math.min(P,Math.max(0,Math.floor((N-2)/2))), rest=N-2*Pn, e1=Math.ceil(rest/2), e2=rest-e1;
+    const {Pn,e1,e2,b}=geo[i], B=b+ringH/2;
     o+=`<path d="M${f(cx-a/2)},${f(cy-B)} H${f(cx+a/2)} A${B},${B} 0 0 1 ${f(cx+a/2)},${f(cy+B)} H${f(cx-a/2)} A${B},${B} 0 0 1 ${f(cx-a/2)},${f(cy-B)}Z" fill="none" stroke="#eee"/>`;
-    let idx=0;
-    const put=(x,y,deg,sc)=>{o+=sym(r[idx++],`translate(${f(x)},${f(y)}) rotate(${f(deg)}) scale(${sc.toFixed(2)})`);};
-    const sS=Pn?Math.min(1,a/Pn/32):1;
-    for(let k=0;k<Pn;k++) put(cx+a/2-(k+.5)*a/Pn,cy-b,0,sS);
-    for(let k=0;k<e1;k++){const p=(-90-180*(k+.5)/e1)*Math.PI/180; put(cx-a/2+b*Math.cos(p),cy+b*Math.sin(p),p*180/Math.PI+90,Math.min(1,Math.PI*b/e1/32));}
-    for(let k=0;k<Pn;k++) put(cx-a/2+(k+.5)*a/Pn,cy+b,180,sS);
-    for(let k=0;k<e2;k++){const p=(90-180*(k+.5)/e2)*Math.PI/180; put(cx+a/2+b*Math.cos(p),cy+b*Math.sin(p),p*180/Math.PI+90,Math.min(1,Math.PI*b/e2/32));}
+    let idx=0; const tfs=[];
+    const put=(x,y,deg)=>{const tf=`translate(${f(x)},${f(y)}) rotate(${f(deg)})`; tfs[idx]=tf; o+=sym(r[idx++],tf);};
+    for(let k=0;k<Pn;k++) put(cx+a/2-(k+.5)*a/Pn,cy-b,0);
+    for(let k=0;k<e1;k++){const p=(-90-180*(k+.5)/e1)*Math.PI/180; put(cx-a/2+b*Math.cos(p),cy+b*Math.sin(p),p*180/Math.PI+90);}
+    for(let k=0;k<Pn;k++) put(cx-a/2+(k+.5)*a/Pn,cy+b,180);
+    for(let k=0;k<e2;k++){const p=(90-180*(k+.5)/e2)*Math.PI/180; put(cx+a/2+b*Math.cos(p),cy+b*Math.sin(p),p*180/Math.PI+90);}
+    o+=overlay(C[i+1].slips,tfs);
   });
-  rings.forEach((r,i)=>{const B=b0+i*ringH+ringH/2;
+  rings.forEach((r,i)=>{const B=geo[i].b+ringH/2;
     o+=`<text x="${f(cx+a/2+B-2)}" y="${cy-4}" font-size="12" fill="#c4577a" text-anchor="end" stroke="#fff" stroke-width="3" paint-order="stroke">${i+2}</text>`;});
   return {w,h,o};
 }
@@ -324,7 +357,7 @@ function usedStitches(){
 function bagSVG(C){
   const K=Math.max(1,st.baseRows||2);
   const baseC=C.filter(c=>c.src<K), sideC=C.filter(c=>c.src>=K);
-  const bp=baseC.length?ovalParts(baseC.map(c=>c.st)):{w:0,h:0,o:''};
+  const bp=baseC.length?ovalParts(baseC):{w:0,h:0,o:''};
   const maxN=sideC.length?Math.max(...sideC.map(c=>c.st.length)):0;
   const sp=sideC.length?flatParts(sideC,{W:Math.max(12,Math.min(26,Math.floor(800/maxN))),allRtl:true,sparse:true,num0:baseC.length,M:36}):{w:0,h:0,o:''};
   const used=usedStitches(), memo=(st.memo||'').split('\n').filter(x=>x.trim()!=='');
@@ -348,7 +381,7 @@ function update(){
   rows().forEach((r,i)=>{
     const tx=l=>l.map(it=>{
       if(it.rep!==undefined) return `(${tx(it.items).join('、')})を${it.rep}回`;
-      const s=byId(st.mode,it.t); used.add(s.id); return `${s.name}${it.n}目`;});
+      const s=byId(st.mode,it.t); used.add(s.id); return isOv(it)?`${s.name}${it.n}目(同じ段の${it.at}目めの上)`:`${s.name}${it.n}目`;});
     const parts=tx(r.items), total=expand(r).reduce((x,s)=>x+s.out,0), t=Math.max(1,r.times||1);
     const label=t>1?`${num}〜${num+t-1}段目`:`${num}段目`;
     if(total) num+=t;
