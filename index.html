@@ -39,6 +39,14 @@ button.p:hover{background:#a8456a}
 .legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px;font-size:13px;color:var(--sub)}
 .legend span{display:inline-flex;align-items:center;gap:4px}
 .recipe{margin:10px 0 0;padding-left:0;list-style:none;font-size:14px;line-height:1.7}
+.group{border:1px dashed var(--accent);border-radius:8px;padding:8px;margin-bottom:6px;background:var(--accent2)}
+.gh{display:flex;gap:6px;align-items:center;margin-bottom:6px;font-size:14px}
+.gh input{width:64px}
+.gh button{margin-left:auto}
+.gi{margin-bottom:6px}
+#ovalOpt{display:none;margin-bottom:12px;padding:10px;border:1px solid var(--line);border-radius:10px;background:#fffdfb;font-size:14px}
+#ovalOpt label{display:flex;gap:6px;align-items:center;margin-top:8px}
+#ovalOpt input{width:70px}
 .hint{color:var(--sub);font-size:12px;margin:4px 0 0}
 </style>
 </head>
@@ -46,11 +54,16 @@ button.p:hover{background:#a8456a}
 <header>
   <h1>🧶 編み図メーカー</h1>
   <div class="seg" id="modeSeg"><button data-v="crochet">かぎ針</button><button data-v="knit">棒針</button></div>
-  <div class="seg" id="layoutSeg"><button data-v="flat">平編み</button><button data-v="round">円形</button></div>
+  <div class="seg" id="layoutSeg"><button data-v="flat">平編み</button><button data-v="round">円形</button><button data-v="oval">楕円(袋の底)</button></div>
 </header>
 <main>
   <section>
     <div class="card">
+      <div id="ovalOpt">
+        <button class="b p" id="bagPreset">袋の底をつくる</button>
+        <p class="hint">鎖の目数を入れると、1段目=鎖、2段目=鎖の上下を細編みで1周する段、を自動で作ります(今の段は置き換わります)。</p>
+        <label>直線部分の目数(片側) <input type="number" id="ovalP" min="1" placeholder="自動"></label>
+      </div>
       <div id="rows"></div>
       <div class="tools">
         <button class="b p" id="addRow">＋ 段を追加</button>
@@ -118,31 +131,45 @@ const save=()=>{ try{localStorage.setItem(KEY,JSON.stringify(st));}catch(e){} };
 const rows=()=>st.data[st.mode];
 
 // ---------- フォーム ----------
+function buildItems(list,cont){
+  const opts=STITCHES[st.mode].map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
+  list.forEach((it,ii)=>{
+    if(it.rep!==undefined){
+      const g=document.createElement('div'); g.className='group';
+      g.innerHTML=`<div class="gh">繰り返し <input type="number" min="1" max="100" value="${it.rep}"> 回 <button class="b x" title="削除">✕</button></div><div class="gi"></div><button class="b">＋ 中に編み目を追加</button>`;
+      g.querySelector('input').oninput=ev=>{it.rep=Math.max(1,Math.min(100,parseInt(ev.target.value)||1));update();};
+      g.querySelector('.gh button').onclick=()=>{list.splice(ii,1);renderForm();};
+      g.querySelector(':scope > button').onclick=()=>{it.items.push({t:STITCHES[st.mode][0].id,n:1});renderForm();};
+      buildItems(it.items,g.querySelector('.gi'));
+      cont.appendChild(g); return;
+    }
+    const e=document.createElement('div'); e.className='entry';
+    e.innerHTML=`<select>${opts}</select><input type="number" min="1" max="200" value="${it.n}"><span>目</span><button class="b x" title="削除">✕</button>`;
+    const sel=e.querySelector('select'); sel.value=byId(st.mode,it.t).id;
+    sel.onchange=()=>{it.t=sel.value;update();};
+    e.querySelector('input').oninput=ev=>{it.n=Math.max(1,Math.min(200,parseInt(ev.target.value)||1));update();};
+    e.querySelector('button').onclick=()=>{list.splice(ii,1);renderForm();};
+    cont.appendChild(e);
+  });
+}
 function renderForm(){
   document.querySelectorAll('#modeSeg button').forEach(b=>b.classList.toggle('on',b.dataset.v===st.mode));
   document.querySelectorAll('#layoutSeg button').forEach(b=>b.classList.toggle('on',b.dataset.v===st.layout));
   const box=document.getElementById('rows'); box.innerHTML='';
-  const opts=STITCHES[st.mode].map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
+  document.getElementById('ovalOpt').style.display=st.layout==='oval'?'block':'none';
+  document.getElementById('ovalP').value=st.ovalP||'';
   rows().forEach((r,ri)=>{
     const d=document.createElement('div'); d.className='row';
     d.innerHTML=`<h3>${ri+1}段目 <span class="cnt"></span>
       <button class="b x" data-a="up" title="上へ">↑</button><button class="b x" data-a="down" title="下へ">↓</button>
       <button class="b x" data-a="dup" title="複製">⧉</button><button class="b x" data-a="del" title="削除">✕</button></h3>
-      <div class="items"></div><button class="b" data-a="add">＋ 編み目を追加</button>`;
-    const items=d.querySelector('.items');
-    r.items.forEach((it,ii)=>{
-      const e=document.createElement('div'); e.className='entry';
-      e.innerHTML=`<select>${opts}</select><input type="number" min="1" max="200" value="${it.n}"><span>目</span><button class="b x" title="削除">✕</button>`;
-      const sel=e.querySelector('select'); sel.value=byId(st.mode,it.t).id;
-      sel.onchange=()=>{it.t=sel.value;update();};
-      e.querySelector('input').oninput=ev=>{it.n=Math.max(1,Math.min(200,parseInt(ev.target.value)||1));update();};
-      e.querySelector('button').onclick=()=>{r.items.splice(ii,1);renderForm();update();};
-      items.appendChild(e);
-    });
+      <div class="items"></div><button class="b" data-a="add">＋ 編み目を追加</button> <button class="b" data-a="addrep">＋ 繰り返しを追加</button>`;
+    buildItems(r.items,d.querySelector('.items'));
     d.onclick=ev=>{
       const a=ev.target.dataset&&ev.target.dataset.a; if(!a) return;
       const L=rows();
       if(a==='add') r.items.push({t:STITCHES[st.mode][0].id,n:1});
+      if(a==='addrep') r.items.push({rep:2,items:[{t:STITCHES[st.mode][0].id,n:1}]});
       if(a==='del') L.splice(ri,1);
       if(a==='dup') L.splice(ri+1,0,JSON.parse(JSON.stringify(r)));
       if(a==='up'&&ri>0) [L[ri-1],L[ri]]=[L[ri],L[ri-1]];
@@ -155,11 +182,12 @@ function renderForm(){
 }
 
 // ---------- 編み図描画 ----------
-const expand=r=>r.items.flatMap(it=>Array.from({length:it.n},()=>byId(st.mode,it.t)));
+const expandList=l=>l.flatMap(it=>it.rep!==undefined?Array.from({length:it.rep},()=>expandList(it.items)).flat():Array.from({length:it.n},()=>byId(st.mode,it.t)));
+const expand=r=>expandList(r.items);
 function chartSVG(){
   const R=rows().map(expand).filter(a=>a.length);
   if(!R.length) return '<p style="color:#7a6f66;padding:30px">段を追加してください</p>';
-  return st.layout==='round'? roundSVG(R):flatSVG(R);
+  return st.layout==='round'? roundSVG(R):st.layout==='oval'? ovalSVG(R):flatSVG(R);
 }
 function flatSVG(R){
   const W=38,H=44,M=46, maxN=Math.max(...R.map(r=>r.length));
@@ -197,13 +225,43 @@ function roundSVG(R){
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" font-family="sans-serif"><rect width="${size}" height="${size}" fill="#fff"/>${o}</svg>`;
 }
 
+function ovalSVG(R){
+  const sw=30, ringH=40, L1=R[0].length;
+  const P=Math.max(1,st.ovalP||Math.max(1,L1-2)), a=P*sw, rings=R.slice(1);
+  const b0=28, Bmax=(rings.length?b0+(rings.length-1)*ringH:0)+ringH/2;
+  const W=Math.ceil(Math.max(a+2*Bmax,L1*sw)+90), H=Math.ceil(2*Bmax+90), cx=W/2, cy=H/2; let o='';
+  // 1段目: 鎖(中央に横一列)
+  R[0].forEach((s,k)=>{o+=sym(s,`translate(${cx-(L1-1)*sw/2+k*sw},${cy}) rotate(90)`);});
+  o+=`<text x="${cx-L1*sw/2-6}" y="${cy+4}" font-size="12" fill="#c4577a" text-anchor="end">1</text>`;
+  const f=n=>n.toFixed(1);
+  rings.forEach((r,i)=>{
+    const b=b0+i*ringH, B=b+ringH/2, N=r.length;
+    const Pn=Math.min(P,Math.max(0,Math.floor((N-2)/2))), rest=N-2*Pn, e1=Math.ceil(rest/2), e2=rest-e1;
+    o+=`<path d="M${f(cx-a/2)},${f(cy-B)} H${f(cx+a/2)} A${B},${B} 0 0 1 ${f(cx+a/2)},${f(cy+B)} H${f(cx-a/2)} A${B},${B} 0 0 1 ${f(cx-a/2)},${f(cy-B)}Z" fill="none" stroke="#eee"/>`;
+    let idx=0;
+    const put=(x,y,deg,sc)=>{o+=sym(r[idx++],`translate(${f(x)},${f(y)}) rotate(${f(deg)}) scale(${sc.toFixed(2)})`);};
+    const sS=Pn?Math.min(1,a/Pn/32):1;
+    for(let k=0;k<Pn;k++) put(cx+a/2-(k+.5)*a/Pn,cy-b,0,sS);
+    for(let k=0;k<e1;k++){const p=(-90-180*(k+.5)/e1)*Math.PI/180; put(cx-a/2+b*Math.cos(p),cy+b*Math.sin(p),p*180/Math.PI+90,Math.min(1,Math.PI*b/e1/32));}
+    for(let k=0;k<Pn;k++) put(cx-a/2+(k+.5)*a/Pn,cy+b,180,sS);
+    for(let k=0;k<e2;k++){const p=(90-180*(k+.5)/e2)*Math.PI/180; put(cx+a/2+b*Math.cos(p),cy+b*Math.sin(p),p*180/Math.PI+90,Math.min(1,Math.PI*b/e2/32));}
+  });
+  rings.forEach((r,i)=>{const B=b0+i*ringH+ringH/2;
+    o+=`<text x="${f(cx+a/2+B-2)}" y="${cy-4}" font-size="12" fill="#c4577a" text-anchor="end" stroke="#fff" stroke-width="3" paint-order="stroke">${i+2}</text>`;});
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="sans-serif"><rect width="${W}" height="${H}" fill="#fff"/>${o}</svg>`;
+}
+
 // ---------- 凡例・文章レシピ ----------
 function update(){
   document.getElementById('chartWrap').innerHTML=chartSVG();
   const used=new Set(), rec=[];
   rows().forEach((r,i)=>{
     let total=0;
-    const parts=r.items.map(it=>{const s=byId(st.mode,it.t); used.add(s.id); total+=it.n*s.out; return `${s.name}${it.n}目`;});
+    const tx=l=>l.map(it=>{
+      if(it.rep!==undefined){const inner=tx(it.items); total+=0; return `(${inner.join('、')})を${it.rep}回`;}
+      const s=byId(st.mode,it.t); used.add(s.id); return `${s.name}${it.n}目`;});
+    total=expand(r).reduce((x,s)=>x+s.out,0);
+    const parts=tx(r.items);
     rec.push(`<li><b>${i+1}段目</b>：${parts.join('、')||'—'}</li>`);
     const c=document.querySelectorAll('#rows .row .cnt')[i]; if(c) c.textContent=`（${total}目）`;
   });
@@ -215,6 +273,14 @@ function update(){
 
 // ---------- イベント ----------
 document.getElementById('modeSeg').onclick=e=>{if(e.target.dataset.v){st.mode=e.target.dataset.v;renderForm();}};
+document.getElementById('ovalP').oninput=e=>{st.ovalP=parseInt(e.target.value)||null;update();};
+document.getElementById('bagPreset').onclick=()=>{
+  const v=prompt('作り目の鎖の目数は？(例: 9)','9'); if(v===null) return;
+  const L=Math.max(3,Math.min(100,parseInt(v)||9));
+  if(st.mode!=='crochet') st.mode='crochet';
+  st.data.crochet=[{items:[{t:'chain',n:L}]},{items:[{t:'sc',n:L-2},{t:'sc',n:3},{t:'sc',n:L-2},{t:'sc',n:3}]}];
+  st.layout='oval'; st.ovalP=null; renderForm();
+};
 document.getElementById('layoutSeg').onclick=e=>{if(e.target.dataset.v){st.layout=e.target.dataset.v;renderForm();}};
 document.getElementById('addRow').onclick=()=>{
   const L=rows(), last=L[L.length-1];
