@@ -18,8 +18,13 @@ h1{font-size:18px;margin:0;margin-right:auto}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
 .seg button{border:0;background:var(--card);padding:7px 12px;font:inherit;cursor:pointer;color:var(--sub)}
 .seg button.on{background:var(--accent);color:#fff}
-main{display:grid;grid-template-columns:minmax(300px,420px) 1fr;gap:16px;padding:16px;max-width:1300px;margin:0 auto}
-@media(max-width:800px){main{grid-template-columns:1fr}}
+main>section{min-width:0}
+.seg{max-width:100%;flex-wrap:wrap}
+.seg button{padding:7px 10px;font-size:14px}
+.entry,.gh{min-width:0}
+.entry input{width:56px}
+main{display:grid;grid-template-columns:minmax(0,420px) minmax(0,1fr);gap:16px;padding:16px;max-width:1300px;margin:0 auto}
+@media(max-width:800px){main{grid-template-columns:minmax(0,1fr);padding:10px}}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
 .row{border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:10px;background:#fffdfb}
 .row h3{margin:0 0 8px;font-size:14px;display:flex;align-items:center;gap:6px}
@@ -49,7 +54,8 @@ button.p:hover{background:#a8456a}
 .group{border:1px dashed var(--accent);border-radius:8px;padding:8px;margin-bottom:6px;background:var(--accent2)}
 .gh{display:flex;gap:6px;align-items:center;margin-bottom:6px;font-size:14px}
 .gh input{width:64px}
-.gh button{margin-left:auto}
+.gh button:last-child{margin-left:0}
+.x:disabled{opacity:.3;cursor:default}
 .gi{margin-bottom:6px}
 #ovalOpt{display:none;margin-bottom:12px;padding:10px;border:1px solid var(--line);border-radius:10px;background:#fffdfb;font-size:14px}
 #ovalOpt label{display:flex;gap:6px;align-items:center;margin-top:8px}
@@ -146,6 +152,14 @@ const rows=()=>st.data[st.mode];
 const first=()=>STITCHES[st.mode][0].id;
 
 // ---------- フォーム ----------
+function moveBtns(list,ii,box){
+  const mv=d=>{const j=ii+d; if(j<0||j>=list.length) return; [list[ii],list[j]]=[list[j],list[ii]]; renderForm();};
+  const u=document.createElement('button'), d=document.createElement('button');
+  u.className=d.className='b x'; u.textContent='↑'; d.textContent='↓'; u.title='前へ'; d.title='後ろへ';
+  u.disabled=ii===0; d.disabled=ii===list.length-1;
+  u.onclick=()=>mv(-1); d.onclick=()=>mv(1);
+  box.append(u,d);
+}
 function buildItems(list,cont){
   const opts=STITCHES[st.mode].map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
   list.forEach((it,ii)=>{
@@ -153,7 +167,8 @@ function buildItems(list,cont){
       const g=document.createElement('div'); g.className='group';
       g.innerHTML=`<div class="gh">繰り返し <input type="number" min="1" max="100" value="${it.rep}"> 回 <button class="b x" title="削除">✕</button></div><div class="gi"></div><button class="b">＋ 中に編み目を追加</button>`;
       g.querySelector('input').oninput=ev=>{it.rep=Math.max(1,Math.min(100,parseInt(ev.target.value)||1));update();};
-      g.querySelector('.gh button').onclick=()=>{list.splice(ii,1);renderForm();};
+      const gdel=g.querySelector('.gh button'); gdel.onclick=()=>{list.splice(ii,1);renderForm();};
+      const mb=document.createElement('span'); mb.style.cssText='margin-left:auto;display:flex;gap:6px'; moveBtns(list,ii,mb); gdel.before(mb); gdel.style.marginLeft='0';
       g.querySelector(':scope > button').onclick=()=>{it.items.push({t:first(),n:1});renderForm();};
       buildItems(it.items,g.querySelector('.gi'));
       cont.appendChild(g); return;
@@ -163,7 +178,8 @@ function buildItems(list,cont){
     const sel=e.querySelector('select'); sel.value=byId(st.mode,it.t).id;
     sel.onchange=()=>{it.t=sel.value;update();};
     e.querySelector('input').oninput=ev=>{it.n=Math.max(1,Math.min(200,parseInt(ev.target.value)||1));update();};
-    e.querySelector('button').onclick=()=>{list.splice(ii,1);renderForm();};
+    const del=e.querySelector('button'); del.onclick=()=>{list.splice(ii,1);renderForm();};
+    const mb=document.createDocumentFragment(); moveBtns(list,ii,mb); del.before(mb);
     cont.appendChild(e);
   });
 }
