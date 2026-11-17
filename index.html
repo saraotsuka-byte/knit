@@ -36,6 +36,13 @@ button.p:hover{background:#a8456a}
 .tools{display:flex;gap:6px;flex-wrap:wrap}
 #chartWrap{overflow:auto;text-align:center;background:#fff;border-radius:8px}
 #chartWrap svg{max-width:none}
+#chartWrap svg.fit{max-width:100%;height:auto}
+#bagOpt{display:none;margin-bottom:12px;padding:10px;border:1px solid var(--line);border-radius:10px;background:#fffdfb;font-size:14px}
+#bagOpt label{display:block;margin-top:8px}
+#bagOpt input[type=text],#bagOpt textarea{width:100%;font:inherit;padding:6px;border:1px solid var(--line);border-radius:6px}
+#bagOpt input[type=number]{width:70px}
+.rowopt{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin-top:8px;font-size:13px;color:var(--sub)}
+.rowopt input{width:60px}
 .legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px;font-size:13px;color:var(--sub)}
 .legend span{display:inline-flex;align-items:center;gap:4px}
 .recipe{margin:10px 0 0;padding-left:0;list-style:none;font-size:14px;line-height:1.7}
@@ -54,11 +61,16 @@ button.p:hover{background:#a8456a}
 <header>
   <h1>🧶 編み図メーカー</h1>
   <div class="seg" id="modeSeg"><button data-v="crochet">かぎ針</button><button data-v="knit">棒針</button></div>
-  <div class="seg" id="layoutSeg"><button data-v="flat">平編み</button><button data-v="round">円形</button><button data-v="oval">楕円(袋の底)</button></div>
+  <div class="seg" id="layoutSeg"><button data-v="flat">平編み</button><button data-v="round">円形</button><button data-v="oval">楕円(袋の底)</button><button data-v="bag">袋物(底+側面)</button></div>
 </header>
 <main>
   <section>
     <div class="card">
+      <div id="bagOpt">
+        <label>底の段数(楕円で描く段数。鎖の段も含む) <input type="number" id="baseRows" min="1" max="50"></label>
+        <label>メモ(右側に表示。改行できます)<textarea id="memo" rows="3" placeholder="例: 鎖24目作る。各段合計50目編む。(増減なし)"></textarea></label>
+        <label>クレジット(右下に表示)<input type="text" id="credit" placeholder="例: @your_name"></label>
+      </div>
       <div id="ovalOpt">
         <button class="b p" id="bagPreset">袋の底をつくる</button>
         <p class="hint">鎖の目数を入れると、1段目=鎖、2段目=鎖の上下を細編みで1周する段、を自動で作ります(今の段は置き換わります)。</p>
@@ -104,6 +116,7 @@ const STITCHES = {
     {id:'inc',   name:'細編み2目編み入れ(増し目)', out:2, svg:ln(0,14,-8,-2)+ln(0,14,8,-2)+xmark(-8,-7,5)+xmark(8,-7,5)},
     {id:'dec',   name:'細編み2目一度(減らし目)', out:1, svg:'<g transform="scale(1,-1)">'+ln(0,14,-8,-2)+ln(0,14,8,-2)+xmark(-8,-7,5)+xmark(8,-7,5)+'</g>'},
     {id:'bobble',name:'玉編み', out:1, svg:drop+ln(-4,-8,4,-11)+ln(-4,-2,4,-5)+ln(-4,4,4,1)},
+    {id:'backsc',name:'バック細編み', out:1, svg:xmark(0,5,6)+'<path d="M-8,-8 Q-4,-15 0,-9 T8,-9" fill="none"/>'},
     {id:'popcorn',name:'ポップル編み', out:1, svg:'<path d="M0,14 C-11,4 -9,-14 0,-14 C9,-14 11,4 0,14Z" fill="#555"/>'+ln(-5,-6,5,-6)+ln(0,-6,0,14)}
   ],
   knit:[
@@ -121,14 +134,16 @@ const sym = (s,tf)=>`<g transform="${tf}" stroke="${S}" stroke-width="${SW}" str
 
 // ---------- 状態 ----------
 const KEY='knit-app-v1';
-const defaults = ()=>({mode:'crochet',layout:'flat',data:{
+const COLORS=[['','なし'],['#d4f0a8','緑'],['#fff27a','黄'],['#ffd1dc','ピンク'],['#cde7ff','水色'],['#e6d9ff','紫'],['#ffe0b3','橙'],['#e8e8e8','グレー']];
+const defaults = ()=>({mode:'crochet',layout:'flat',ovalP:null,baseRows:2,memo:'',credit:'',data:{
   crochet:[{items:[{t:'chain',n:9}]},{items:[{t:'sc',n:9}]}],
   knit:[{items:[{t:'cast',n:9}]},{items:[{t:'knit',n:9}]}]
 }});
 let st; try{ st=JSON.parse(localStorage.getItem(KEY)); }catch(e){}
-if(!st||!st.data) st=defaults();
+st = (st&&st.data)? Object.assign(defaults(),st) : defaults();
 const save=()=>{ try{localStorage.setItem(KEY,JSON.stringify(st));}catch(e){} };
 const rows=()=>st.data[st.mode];
+const first=()=>STITCHES[st.mode][0].id;
 
 // ---------- フォーム ----------
 function buildItems(list,cont){
@@ -139,7 +154,7 @@ function buildItems(list,cont){
       g.innerHTML=`<div class="gh">繰り返し <input type="number" min="1" max="100" value="${it.rep}"> 回 <button class="b x" title="削除">✕</button></div><div class="gi"></div><button class="b">＋ 中に編み目を追加</button>`;
       g.querySelector('input').oninput=ev=>{it.rep=Math.max(1,Math.min(100,parseInt(ev.target.value)||1));update();};
       g.querySelector('.gh button').onclick=()=>{list.splice(ii,1);renderForm();};
-      g.querySelector(':scope > button').onclick=()=>{it.items.push({t:STITCHES[st.mode][0].id,n:1});renderForm();};
+      g.querySelector(':scope > button').onclick=()=>{it.items.push({t:first(),n:1});renderForm();};
       buildItems(it.items,g.querySelector('.gi'));
       cont.appendChild(g); return;
     }
@@ -155,55 +170,88 @@ function buildItems(list,cont){
 function renderForm(){
   document.querySelectorAll('#modeSeg button').forEach(b=>b.classList.toggle('on',b.dataset.v===st.mode));
   document.querySelectorAll('#layoutSeg button').forEach(b=>b.classList.toggle('on',b.dataset.v===st.layout));
-  const box=document.getElementById('rows'); box.innerHTML='';
-  document.getElementById('ovalOpt').style.display=st.layout==='oval'?'block':'none';
+  document.getElementById('ovalOpt').style.display=(st.layout==='oval'||st.layout==='bag')?'block':'none';
+  document.getElementById('bagOpt').style.display=st.layout==='bag'?'block':'none';
   document.getElementById('ovalP').value=st.ovalP||'';
+  document.getElementById('baseRows').value=st.baseRows||2;
+  document.getElementById('memo').value=st.memo||'';
+  document.getElementById('credit').value=st.credit||'';
+  const box=document.getElementById('rows'); box.innerHTML='';
+  const copts=COLORS.map(c=>`<option value="${c[0]}">${c[1]}</option>`).join('');
   rows().forEach((r,ri)=>{
     const d=document.createElement('div'); d.className='row';
-    d.innerHTML=`<h3>${ri+1}段目 <span class="cnt"></span>
+    d.innerHTML=`<h3><span class="ttl"></span> <span class="cnt"></span>
       <button class="b x" data-a="up" title="上へ">↑</button><button class="b x" data-a="down" title="下へ">↓</button>
       <button class="b x" data-a="dup" title="複製">⧉</button><button class="b x" data-a="del" title="削除">✕</button></h3>
-      <div class="items"></div><button class="b" data-a="add">＋ 編み目を追加</button> <button class="b" data-a="addrep">＋ 繰り返しを追加</button>`;
+      <div class="items"></div><button class="b" data-a="add">＋ 編み目を追加</button> <button class="b" data-a="addrep">＋ 繰り返しを追加</button>
+      <div class="rowopt"><span>この段を <input type="number" class="times" min="1" max="200"> 段くりかえす</span><span>背景色 <select class="color">${copts}</select></span></div>`;
     buildItems(r.items,d.querySelector('.items'));
+    const ti=d.querySelector('.times'); ti.value=r.times||1;
+    ti.oninput=ev=>{r.times=Math.max(1,Math.min(200,parseInt(ev.target.value)||1));update();};
+    const co=d.querySelector('.color'); co.value=r.color||'';
+    co.onchange=()=>{r.color=co.value;update();};
     d.onclick=ev=>{
       const a=ev.target.dataset&&ev.target.dataset.a; if(!a) return;
       const L=rows();
-      if(a==='add') r.items.push({t:STITCHES[st.mode][0].id,n:1});
-      if(a==='addrep') r.items.push({rep:2,items:[{t:STITCHES[st.mode][0].id,n:1}]});
+      if(a==='add') r.items.push({t:first(),n:1});
+      if(a==='addrep') r.items.push({rep:2,items:[{t:first(),n:1}]});
       if(a==='del') L.splice(ri,1);
       if(a==='dup') L.splice(ri+1,0,JSON.parse(JSON.stringify(r)));
       if(a==='up'&&ri>0) [L[ri-1],L[ri]]=[L[ri],L[ri-1]];
       if(a==='down'&&ri<L.length-1) [L[ri+1],L[ri]]=[L[ri],L[ri+1]];
-      renderForm(); update();
+      renderForm();
     };
     box.appendChild(d);
   });
   update();
 }
 
-// ---------- 編み図描画 ----------
+// ---------- 展開 ----------
 const expandList=l=>l.flatMap(it=>it.rep!==undefined?Array.from({length:it.rep},()=>expandList(it.items)).flat():Array.from({length:it.n},()=>byId(st.mode,it.t)));
 const expand=r=>expandList(r.items);
-function chartSVG(){
-  const R=rows().map(expand).filter(a=>a.length);
-  if(!R.length) return '<p style="color:#7a6f66;padding:30px">段を追加してください</p>';
-  return st.layout==='round'? roundSVG(R):st.layout==='oval'? ovalSVG(R):flatSVG(R);
-}
-function flatSVG(R){
-  const W=38,H=44,M=46, maxN=Math.max(...R.map(r=>r.length));
-  const w=maxN*W+M*2, h=R.length*H+30; let o='';
-  R.forEach((r,i)=>{
-    const y=h-15-(i+0.5)*H, n=r.length, rtl=i%2===0, cx=w/2;
-    o+=`<line x1="${M-6}" x2="${w-M+6}" y1="${y+H/2}" y2="${y+H/2}" stroke="#eee"/>`;
-    r.forEach((s,k)=>{
-      const pos=rtl?(n-1)/2-k:k-(n-1)/2;
-      o+=sym(s,`translate(${cx+pos*W},${y})`);
-    });
-    const lx=rtl?w-M+12:M-12;
-    o+=`<text x="${lx}" y="${y+4}" text-anchor="${rtl?'start':'end'}" font-size="12" fill="#7a6f66">${rtl?(i+1)+'段 ←':'→ '+(i+1)+'段'}</text>`;
+// 「この段を○段くりかえす」を展開した、描画用の段リスト
+function chartRows(){
+  const out=[];
+  rows().forEach((r,si)=>{
+    const stt=expand(r); if(!stt.length) return;
+    for(let k=0;k<Math.max(1,r.times||1);k++) out.push({st:stt,color:r.color||'',src:si});
   });
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" font-family="sans-serif"><rect width="${w}" height="${h}" fill="#fff"/>${o}</svg>`;
+  return out;
 }
+const wrap=(p,cls='')=>`<svg xmlns="http://www.w3.org/2000/svg" class="${cls}" width="${p.w}" height="${p.h}" viewBox="0 0 ${p.w} ${p.h}" font-family="sans-serif"><rect width="${p.w}" height="${p.h}" fill="#fff"/>${p.o}</svg>`;
+function chartSVG(){
+  const C=chartRows();
+  if(!C.length) return '<p style="color:#7a6f66;padding:30px">段を追加してください</p>';
+  if(st.layout==='round') return roundSVG(C.map(c=>c.st));
+  if(st.layout==='oval') return wrap(ovalParts(C.map(c=>c.st)));
+  if(st.layout==='bag') return bagSVG(C);
+  return wrap(flatParts(C,{}));
+}
+
+// ---------- 平編み(往復/側面) ----------
+function flatParts(C,opt){
+  const maxN=Math.max(...C.map(c=>c.st.length));
+  const W=opt.W||38, k=Math.min(1,W/38), H=Math.round(44*Math.max(k,.72)), M=opt.M||46;
+  const bw=maxN*W, w=bw+M*2, h=C.length*H+30; let o='';
+  C.forEach((c,i)=>{
+    const y=h-15-(i+0.5)*H, n=c.st.length, rtl=opt.allRtl||i%2===0, cx=w/2, num=(opt.num0||0)+i+1;
+    if(c.color) o+=`<rect x="${M-6}" y="${y-H/2}" width="${bw+12}" height="${H}" fill="${c.color}"/>`;
+    o+=`<line x1="${M-6}" x2="${w-M+6}" y1="${y+H/2}" y2="${y+H/2}" stroke="#e8e8e8"/>`;
+    c.st.forEach((s,j)=>{
+      const pos=rtl?(n-1)/2-j:j-(n-1)/2;
+      o+=sym(s,`translate(${cx+pos*W},${y}) scale(${k.toFixed(2)})`);
+    });
+    const show=!opt.sparse||num===1||num%5===0||i===C.length-1;
+    if(show){
+      const lx=rtl?w-M+12:M-12;
+      const t=opt.sparse?String(num):(rtl?num+'段 ←':'→ '+num+'段');
+      o+=`<text x="${lx}" y="${y+4}" text-anchor="${rtl?'start':'end'}" font-size="12" fill="#555">${t}</text>`;
+    }
+  });
+  return {w,h,o};
+}
+
+// ---------- 円形 ----------
 function roundSVG(R){
   const ringH=42, sw=30; let prev=10; const rings=[];
   R.forEach(r=>{
@@ -222,15 +270,15 @@ function roundSVG(R){
   rings.forEach((g,i)=>{
     o+=`<text x="${c+g.rm+ringH/2-2}" y="${c-4}" font-size="12" fill="#c4577a" text-anchor="end" stroke="#fff" stroke-width="3" paint-order="stroke">${i+1}</text>`;
   });
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" font-family="sans-serif"><rect width="${size}" height="${size}" fill="#fff"/>${o}</svg>`;
+  return wrap({w:size,h:size,o});
 }
 
-function ovalSVG(R){
+// ---------- 楕円(袋の底) ----------
+function ovalParts(R){
   const sw=30, ringH=40, L1=R[0].length;
   const P=Math.max(1,st.ovalP||Math.max(1,L1-2)), a=P*sw, rings=R.slice(1);
   const b0=28, Bmax=(rings.length?b0+(rings.length-1)*ringH:0)+ringH/2;
-  const W=Math.ceil(Math.max(a+2*Bmax,L1*sw)+90), H=Math.ceil(2*Bmax+90), cx=W/2, cy=H/2; let o='';
-  // 1段目: 鎖(中央に横一列)
+  const w=Math.ceil(Math.max(a+2*Bmax,L1*sw)+90), h=Math.ceil(2*Bmax+90), cx=w/2, cy=h/2; let o='';
   R[0].forEach((s,k)=>{o+=sym(s,`translate(${cx-(L1-1)*sw/2+k*sw},${cy}) rotate(90)`);});
   o+=`<text x="${cx-L1*sw/2-6}" y="${cy+4}" font-size="12" fill="#c4577a" text-anchor="end">1</text>`;
   const f=n=>n.toFixed(1);
@@ -248,43 +296,75 @@ function ovalSVG(R){
   });
   rings.forEach((r,i)=>{const B=b0+i*ringH+ringH/2;
     o+=`<text x="${f(cx+a/2+B-2)}" y="${cy-4}" font-size="12" fill="#c4577a" text-anchor="end" stroke="#fff" stroke-width="3" paint-order="stroke">${i+2}</text>`;});
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="sans-serif"><rect width="${W}" height="${H}" fill="#fff"/>${o}</svg>`;
+  return {w,h,o};
+}
+
+// ---------- 袋物(底の楕円図 + 側面の平面図) ----------
+function usedStitches(){
+  const used=new Set(), walk=l=>l.forEach(it=>it.rep!==undefined?walk(it.items):used.add(byId(st.mode,it.t).id));
+  rows().forEach(r=>walk(r.items));
+  return STITCHES[st.mode].filter(s=>used.has(s.id));
+}
+function bagSVG(C){
+  const K=Math.max(1,st.baseRows||2);
+  const baseC=C.filter(c=>c.src<K), sideC=C.filter(c=>c.src>=K);
+  const bp=baseC.length?ovalParts(baseC.map(c=>c.st)):{w:0,h:0,o:''};
+  const maxN=sideC.length?Math.max(...sideC.map(c=>c.st.length)):0;
+  const sp=sideC.length?flatParts(sideC,{W:Math.max(12,Math.min(26,Math.floor(800/maxN))),allRtl:true,sparse:true,num0:baseC.length,M:36}):{w:0,h:0,o:''};
+  const used=usedStitches(), memo=(st.memo||'').split('\n').filter(x=>x.trim()!=='');
+  const colW=Math.max(300,Math.min(bp.w,560)), sO=bp.w?Math.min(1,colW/bp.w):1;
+  const legendH=used.length*26+16, memoH=memo.length*20+16, ovalH=bp.h*sO, chainN=baseC.length?baseC[0].st.length:0;
+  const H=Math.ceil(Math.max(sp.h+24,16+legendH+memoH+ovalH+70)), x0=sp.w+16, W=Math.ceil(x0+colW+16);
+  let o=`<g transform="translate(0,${H-sp.h-10})">${sp.o}</g>`;
+  used.forEach((s,i)=>{const y=22+i*26;
+    o+=sym(s,`translate(${x0+14},${y}) scale(.8)`)+`<text x="${x0+34}" y="${y+5}" font-size="13" fill="#222">${s.name}</text>`;});
+  memo.forEach((t,i)=>{o+=`<text x="${x0+4}" y="${16+legendH+i*20+14}" font-size="13" fill="#222">${t.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</text>`;});
+  if(bp.w) o+=`<g transform="translate(${x0+(colW-bp.w*sO)/2},${H-ovalH-34}) scale(${sO.toFixed(3)})">${bp.o}</g>`;
+  if(chainN) o+=`<text x="${x0+colW/2}" y="${H-22}" font-size="12" fill="#555" text-anchor="middle">鎖${chainN}目作る</text>`;
+  if(st.credit) o+=`<text x="${W-12}" y="${H-6}" font-size="12" fill="#555" text-anchor="end">${st.credit.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</text>`;
+  return wrap({w:W,h:H,o},'fit');
 }
 
 // ---------- 凡例・文章レシピ ----------
 function update(){
   document.getElementById('chartWrap').innerHTML=chartSVG();
-  const used=new Set(), rec=[];
+  const used=new Set(), rec=[]; let num=1;
   rows().forEach((r,i)=>{
-    let total=0;
     const tx=l=>l.map(it=>{
-      if(it.rep!==undefined){const inner=tx(it.items); total+=0; return `(${inner.join('、')})を${it.rep}回`;}
+      if(it.rep!==undefined) return `(${tx(it.items).join('、')})を${it.rep}回`;
       const s=byId(st.mode,it.t); used.add(s.id); return `${s.name}${it.n}目`;});
-    total=expand(r).reduce((x,s)=>x+s.out,0);
-    const parts=tx(r.items);
-    rec.push(`<li><b>${i+1}段目</b>：${parts.join('、')||'—'}</li>`);
+    const parts=tx(r.items), total=expand(r).reduce((x,s)=>x+s.out,0), t=Math.max(1,r.times||1);
+    const label=t>1?`${num}〜${num+t-1}段目`:`${num}段目`;
+    if(total) num+=t;
+    rec.push(`<li><b>${label}</b>：${parts.join('、')||'—'}</li>`);
     const c=document.querySelectorAll('#rows .row .cnt')[i]; if(c) c.textContent=`（${total}目）`;
+    const ttl=document.querySelectorAll('#rows .row .ttl')[i]; if(ttl) ttl.textContent=label;
   });
   document.getElementById('recipe').innerHTML=rec.join('');
-  document.getElementById('legend').innerHTML=STITCHES[st.mode].filter(s=>used.has(s.id))
+  document.getElementById('legend').innerHTML=st.layout==='bag'?'':STITCHES[st.mode].filter(s=>used.has(s.id))
     .map(s=>`<span><svg width="26" height="30" viewBox="-13 -15 26 30">${sym(s,'')}</svg>${s.name}</span>`).join('');
   save();
 }
 
 // ---------- イベント ----------
 document.getElementById('modeSeg').onclick=e=>{if(e.target.dataset.v){st.mode=e.target.dataset.v;renderForm();}};
-document.getElementById('ovalP').oninput=e=>{st.ovalP=parseInt(e.target.value)||null;update();};
-document.getElementById('bagPreset').onclick=()=>{
-  const v=prompt('作り目の鎖の目数は？(例: 9)','9'); if(v===null) return;
-  const L=Math.max(3,Math.min(100,parseInt(v)||9));
-  if(st.mode!=='crochet') st.mode='crochet';
-  st.data.crochet=[{items:[{t:'chain',n:L}]},{items:[{t:'sc',n:L-2},{t:'sc',n:3},{t:'sc',n:L-2},{t:'sc',n:3}]}];
-  st.layout='oval'; st.ovalP=null; renderForm();
-};
 document.getElementById('layoutSeg').onclick=e=>{if(e.target.dataset.v){st.layout=e.target.dataset.v;renderForm();}};
+document.getElementById('ovalP').oninput=e=>{st.ovalP=parseInt(e.target.value)||null;update();};
+document.getElementById('baseRows').oninput=e=>{st.baseRows=Math.max(1,parseInt(e.target.value)||2);update();};
+document.getElementById('memo').oninput=e=>{st.memo=e.target.value;update();};
+document.getElementById('credit').oninput=e=>{st.credit=e.target.value;update();};
+document.getElementById('bagPreset').onclick=()=>{
+  const v=prompt('作り目の鎖の目数は？(例: 24)','24'); if(v===null) return;
+  const L=Math.max(3,Math.min(100,parseInt(v)||24));
+  st.mode='crochet';
+  const total=2*(L-2)+6;
+  st.data.crochet=[{items:[{t:'chain',n:L}]},{items:[{t:'sc',n:L-2},{t:'sc',n:3},{t:'sc',n:L-2},{t:'sc',n:3}]}];
+  if(st.layout==='bag') st.data.crochet.push({items:[{t:'sc',n:total}],times:10});
+  st.ovalP=null; st.baseRows=2; renderForm();
+};
 document.getElementById('addRow').onclick=()=>{
   const L=rows(), last=L[L.length-1];
-  L.push(last?JSON.parse(JSON.stringify(last)):{items:[{t:STITCHES[st.mode][0].id,n:6}]});
+  L.push(last?JSON.parse(JSON.stringify(last)):{items:[{t:first(),n:6}]});
   renderForm();
 };
 document.getElementById('reset').onclick=()=>{ if(confirm('すべての編み図を初期状態に戻しますか?')){st=defaults();renderForm();} };
