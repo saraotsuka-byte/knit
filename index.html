@@ -150,6 +150,13 @@ function overlay(slips,tfs){
     o+=`<g transform="${tf} translate(0,-15)"><circle r="6" fill="#fff"/></g>`+sym(sl,tf+' translate(0,-15)');});
   return o;
 }
+// 立ち上がりの鎖: 段の最初の編み目の隣に、縦(段の高さ方向)に並べる
+const isTurn=it=>it.rep===undefined&&it.t==='turn';
+function turnSvg(t,base,sp){
+  const ch=STITCHES.crochet.find(x=>x.id==='chain'); let o=''; const sc=Math.min(.8,.8*sp/12);
+  for(let i=0;i<t;i++) o+=sym(ch,`${base} translate(0,${(-((t-1)/2-i)*sp).toFixed(1)}) rotate(90) scale(${sc.toFixed(2)})`);
+  return o;
+}
 // ---------- 状態 ----------
 const KEY='knit-app-v1';
 const COLORS=[['','なし'],['#d4f0a8','緑'],['#fff27a','黄'],['#ffd1dc','ピンク'],['#cde7ff','水色'],['#e6d9ff','紫'],['#ffe0b3','橙'],['#e8e8e8','グレー']];
@@ -244,14 +251,15 @@ function renderForm(){
 
 // ---------- 展開 ----------
 const expandList=l=>l.flatMap(it=>it.rep!==undefined?Array.from({length:it.rep},()=>expandList(it.items)).flat():Array.from({length:it.n},()=>byId(st.mode,it.t)));
-const expand=r=>expandList(r.items.filter(it=>!isOv(it)));
+const expand=r=>expandList(r.items.filter(it=>!isOv(it)&&!isTurn(it)));
+const turnOf=r=>r.items.filter(isTurn).reduce((x,it)=>x+it.n,0);
 const slipsOf=r=>r.items.filter(isOv).flatMap(it=>Array.from({length:it.n},(_,k)=>it.at-1+k));
 // 「この段を○段くりかえす」を展開した、描画用の段リスト
 function chartRows(){
   const out=[];
   rows().forEach((r,si)=>{
     const stt=expand(r); if(!stt.length) return;
-    for(let k=0;k<Math.max(1,r.times||1);k++) out.push({st:stt,color:r.color||'',src:si,slips:slipsOf(r)});
+    for(let k=0;k<Math.max(1,r.times||1);k++) out.push({st:stt,color:r.color||'',src:si,slips:slipsOf(r),turn:turnOf(r)});
   });
   return out;
 }
@@ -268,7 +276,7 @@ function chartSVG(){
 // ---------- 平編み(往復/側面) ----------
 function flatParts(C,opt){
   const maxN=Math.max(...C.map(c=>c.st.length));
-  const W=opt.W||38, k=Math.min(1,W/38), H=Math.round(44*Math.max(k,.72)), M=opt.M||46;
+  const W=opt.W||38, k=Math.min(1,W/38), H=Math.round(44*Math.max(k,.72)), hasT=C.some(c=>c.turn), M=(opt.M||46)+(hasT?40:0);
   const bw=maxN*W, w=bw+M*2, h=C.length*H+30; let o='';
   C.forEach((c,i)=>{
     const y=h-15-(i+0.5)*H, n=c.st.length, rtl=opt.allRtl||i%2===0, cx=w/2, num=(opt.num0||0)+i+1;
@@ -281,9 +289,10 @@ function flatParts(C,opt){
       o+=sym(s,tfs[j]);
     });
     o+=overlay(c.slips,tfs);
+    if(c.turn){const xT=cx+(rtl?1:-1)*((n-1)/2+1)*W; o+=turnSvg(c.turn,`translate(${xT},${y})`,Math.min(12,(H-6)/c.turn));}
     const show=!opt.sparse||num===1||num%5===0||i===C.length-1;
     if(show){
-      const lx=rtl?w-M+12:M-12;
+      const lx=rtl?w-M+(hasT?38:12):M-(hasT?38:12);
       const t=opt.sparse?String(num):(rtl?num+'段 ←':'→ '+num+'段');
       o+=`<text x="${lx}" y="${y+4}" text-anchor="${rtl?'start':'end'}" font-size="12" fill="#555">${t}</text>`;
     }
@@ -295,19 +304,17 @@ function flatParts(C,opt){
 function roundSVG(C){
   const R=C.map(c=>c.st), ringH=44; let prev=10; const rings=[];
   R.forEach(r=>{
-    const n=r.length, sw=Math.max(24,Math.max(...r.map(wOf))+6), rm=Math.max(prev+ringH/2, n*sw/(2*Math.PI));
+    const n=r.length+(C[rings.length].turn?1:0), sw=Math.max(26,Math.max(...r.map(wOf))+8), rm=Math.max(prev+ringH/2, n*sw/(2*Math.PI)+12);
     rings.push({rm,n}); prev=rm+ringH/2;
   });
   const Rmax=prev+10, size=Math.ceil(Rmax*2+70), c=size/2; let o='';
   rings.forEach((g,i)=>{
     o+=`<circle cx="${c}" cy="${c}" r="${g.rm+ringH/2}" fill="none" stroke="#eee"/>`;
     const tfs=[];
-    R[i].forEach((s,k)=>{
-      const th=-Math.PI/2-2*Math.PI*(k+0.5)/g.n;
-      const x=c+g.rm*Math.cos(th), y=c+g.rm*Math.sin(th), deg=th*180/Math.PI+90;
-      tfs[k]=`translate(${x.toFixed(1)},${y.toFixed(1)}) rotate(${deg.toFixed(1)})`;
-      o+=sym(s,tfs[k]);
-    });
+    const off=C[i].turn?1:0, tpos=sl=>{const th=-Math.PI/2-2*Math.PI*(sl+0.5)/g.n;
+      return `translate(${(c+g.rm*Math.cos(th)).toFixed(1)},${(c+g.rm*Math.sin(th)).toFixed(1)}) rotate(${(th*180/Math.PI+90).toFixed(1)})`;};
+    if(off) o+=turnSvg(C[i].turn,tpos(0),Math.min(12,(ringH-6)/C[i].turn));
+    R[i].forEach((s,k)=>{ tfs[k]=tpos(k+off); o+=sym(s,tfs[k]); });
     o+=overlay(C[i].slips,tfs);
   });
   rings.forEach((g,i)=>{
@@ -323,8 +330,8 @@ function ovalParts(C){
   const geo=[]; let bp=0;
   rings.forEach((r,i)=>{
     const N=r.length, Pn=Math.min(P,Math.max(0,Math.floor((N-2)/2))), rest=N-2*Pn, e1=Math.ceil(rest/2), e2=rest-e1;
-    const wm=Math.max(24,Math.max(...r.map(wOf))+6);
-    const b=Math.max(i?bp+ringH:30, Math.max(e1,e2)*wm/Math.PI);
+    const wm=Math.max(26,Math.max(...r.map(wOf))+8);
+    const b=Math.max(i?bp+ringH:30, Math.max(e1,e2)*wm/Math.PI+12);
     geo.push({Pn,e1,e2,b}); bp=b;
   });
   const Bmax=(geo.length?geo[geo.length-1].b:0)+ringH/2;
@@ -337,7 +344,9 @@ function ovalParts(C){
     o+=`<path d="M${f(cx-a/2)},${f(cy-B)} H${f(cx+a/2)} A${B},${B} 0 0 1 ${f(cx+a/2)},${f(cy+B)} H${f(cx-a/2)} A${B},${B} 0 0 1 ${f(cx-a/2)},${f(cy-B)}Z" fill="none" stroke="#eee"/>`;
     let idx=0; const tfs=[];
     const put=(x,y,deg)=>{const tf=`translate(${f(x)},${f(y)}) rotate(${f(deg)})`; tfs[idx]=tf; o+=sym(r[idx++],tf);};
-    for(let k=0;k<Pn;k++) put(cx+a/2-(k+.5)*a/Pn,cy-b,0);
+    const tn=C[i+1].turn, S1=Pn+(tn?1:0), off=tn?1:0;
+    if(tn) o+=turnSvg(tn,`translate(${f(cx+a/2-.5*a/S1)},${f(cy-b)})`,Math.min(12,(ringH-6)/tn));
+    for(let k=0;k<Pn;k++) put(cx+a/2-(k+off+.5)*a/S1,cy-b,0);
     for(let k=0;k<e1;k++){const p=(-90-180*(k+.5)/e1)*Math.PI/180; put(cx-a/2+b*Math.cos(p),cy+b*Math.sin(p),p*180/Math.PI+90);}
     for(let k=0;k<Pn;k++) put(cx-a/2+(k+.5)*a/Pn,cy+b,180);
     for(let k=0;k<e2;k++){const p=(90-180*(k+.5)/e2)*Math.PI/180; put(cx+a/2+b*Math.cos(p),cy+b*Math.sin(p),p*180/Math.PI+90);}
